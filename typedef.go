@@ -1,4 +1,4 @@
-package common
+package pushtype
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/tinode/chat/server/push"
 	"google.golang.org/api/googleapi"
 )
 
@@ -73,9 +72,9 @@ func (cp Payload) getIntAttr(field string) int {
 func (cc *Config) GetStringField(what, field string) string {
 	var val string
 	switch what {
-	case push.ActMsg:
+	case ActMsg:
 		val = cc.Msg.getStringAttr(field)
-	case push.ActSub:
+	case ActSub:
 		val = cc.Sub.getStringAttr(field)
 	}
 	if val == "" {
@@ -87,9 +86,9 @@ func (cc *Config) GetStringField(what, field string) string {
 func (cc *Config) GetIntField(what, field string) int {
 	var val int
 	switch what {
-	case push.ActMsg:
+	case ActMsg:
 		val = cc.Msg.getIntAttr(field)
-	case push.ActSub:
+	case ActSub:
 		val = cc.Sub.getIntAttr(field)
 	}
 	if val == 0 {
@@ -97,6 +96,30 @@ func (cc *Config) GetIntField(what, field string) int {
 	}
 	return val
 }
+
+// TNPGResponse represents response from TNPG push gateway.
+type TNPGResponse struct {
+	// Push message response only.
+	MessageID string `json:"msg_id,omitempty"`
+	// Server response HTTP code.
+	Code int `json:"code,omitempty"`
+	// FCM response code. Both push and sub/unsub response.
+	ErrorCode     string `json:"errcode,omitempty"`
+	ExtendedError string `json:"exerr,omitempty"`
+	ErrorMessage  string `json:"errmsg,omitempty"`
+	// Channel sub/unsub response only.
+	Index int `json:"index,omitempty"`
+}
+
+// Push actions
+const (
+	// New message.
+	ActMsg = "msg"
+	// New subscription.
+	ActSub = "sub"
+	// Messages read: clear unread count.
+	ActRead = "read"
+)
 
 // AndroidVisibilityType defines notification visibility constants
 // https://developer.android.com/reference/android/app/Notification.html#visibility
@@ -543,4 +566,3 @@ func DecodeGoogleApiError(err error) (decoded *GApiError, errs []error) {
 
 	return
 }
-
