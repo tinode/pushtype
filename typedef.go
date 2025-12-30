@@ -1,8 +1,9 @@
 package pushtype
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 
@@ -499,70 +500,37 @@ type GApiError struct {
 	ExtendedInfo string
 }
 
-// DecodeGoogleApiError converts very complex googleapi.Error to a bit more manageable structure.
-func DecodeGoogleApiError(err error) (decoded *GApiError, errs []error) {
-	decoded = &GApiError{}
-	if gerr, ok := err.(*googleapi.Error); ok {
-		// HTTP status code.
-		decoded.HttpCode = gerr.Code
-		decoded.ErrMessage = gerr.Message
-		for _, errInfo := range gerr.Errors {
-			decoded.ErrMessage += "; " + errInfo.Reason + "/" + errInfo.Message
-		}
-
-		// Decode the FCM error.
-		for _, iface := range gerr.Details {
-			details, ok := iface.(map[string]any)
-			if !ok {
-				errs = append(errs, fmt.Errorf("error.Details unrecognized format %T", iface))
-				continue
+// ParseGoogleAPIError extracts FCM error status and message from the error returned by google API
+// It takes *googleapi.Error and attempts to parse the JSON body (Google error envelope)
+// The returned code is the service level 'status' (e.g., "UNREGISTERED", "NOT_FOUND", etc.).
+func ParseGoogleAPIError(err error) (string, string, []error) {
+	var gerr *googleapi.Error
+	if errors.As(err, &gerr) {
+		var decodeErrs []error
+		fcmCode := ""
+		msg := gerr.Message
+		if gerr.Body != "" {
+			var parsed struct {
+				Error struct {
+					Status  string           `json:"status"`
+					Message string           `json:"message"`
+					Details []map[string]any `json:"details"`
+				} `json:"error"`
 			}
-			switch details["@type"] {
-			case "type.googleapis.com/google.firebase.fcm.v1.FcmError":
-				if errCode, ok := details["errorCode"].(string); ok {
-					if decoded.FcmErrCode != "" {
-						// This has not been observed but FCM is uncler if it can happen.
-						errs = append(errs, fmt.Errorf("multiple FcmError codes '%s', '%s'", errCode, decoded.FcmErrCode))
-					} else {
-						decoded.FcmErrCode = errCode
-					}
-				} else {
-					errs = append(errs, fmt.Errorf("error.Details errorCode is not a string: %T", details["errorCode"]))
+			if jerr := json.Unmarshal([]byte(gerr.Body), &parsed); jerr != nil {
+				decodeErrs = append(decodeErrs, jerr)
+			} else {
+				if parsed.Error.Status != "" {
+					fcmCode = parsed.Error.Status
 				}
-			case "type.googleapis.com/google.rpc.BadRequest":
-				// dst.fcmErrCode == INVALID_ARGUMENT
-				if fieldViolations, ok := details["fieldViolations"].([]any); !ok {
-					errs = append(errs, fmt.Errorf("wrong type of error.Details 'fieldViolations': %T", details["fieldViolations"]))
-				} else {
-					var fields []string
-					for _, violationIface := range fieldViolations {
-						if violation, ok := violationIface.(map[string]any); !ok {
-							errs = append(errs, fmt.Errorf("wrong type of error.Details.fieldViolations item: %T", iface))
-						} else if field, ok := violation["field"].(string); ok && field != "" {
-							fields = append(fields, field)
-						} else {
-							errs = append(errs, fmt.Errorf("error.Details 'fieldViolation' has no 'field': %T, %s", violation["field"], violation["description"]))
-						}
-					}
-					decoded.ExtendedInfo = strings.Join(fields, ",")
+				if parsed.Error.Message != "" {
+					msg = parsed.Error.Message
 				}
-			case "type.googleapis.com/google.rpc.QuotaFailure":
-				// dst.fcmErrCode == QUOTA_EXCEEDED
-				// TODO: this error has not been observed, don't know how to handle it.
-				errs = append(errs, fmt.Errorf("quota exceeded %v", details))
-			default:
-				errs = append(errs, fmt.Errorf("unknown error '@type': %v", details))
 			}
 		}
-	} else {
-		decoded.HttpCode = http.StatusBadRequest
-		decoded.ErrMessage = err.Error()
-		errs = append(errs, fmt.Errorf("not googleapi.Error %w", err))
+		return strings.ToUpper(fcmCode), msg, decodeErrs
 	}
 
-	if decoded.FcmErrCode == "" {
-		decoded.FcmErrCode = string(ErrorUnspecified)
-	}
-
-	return
+	// Not a googleapi.Error: return generic message.
+	return ErrorUnspecified, err.Error(), []error{fmt.Errorf("not googleapi.Error: %w", err)}
 }
