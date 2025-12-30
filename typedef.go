@@ -112,6 +112,17 @@ type TNPGResponse struct {
 	Index int `json:"index,omitempty"`
 }
 
+// BatchResult is a generic result for IID batch operations.
+// It mirrors the shape of batch response used by push gateways: counts and per-item results.
+type BatchResult struct {
+	// Error code and message if the entire batch failed. Optional.
+	FatalCode    string          `json:"errcode,omitempty"`
+	FatalMessage string          `json:"errmsg,omitempty"`
+	SuccessCount int             `json:"sent_count"`
+	FailureCount int             `json:"fail_count"`
+	Responses    []*TNPGResponse `json:"resp,omitempty"`
+}
+
 // Push actions
 const (
 	// New message.
