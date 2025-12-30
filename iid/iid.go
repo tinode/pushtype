@@ -87,8 +87,8 @@ func (c *IIDClient) BatchManage(topic string, tokens []string, add bool) ([]map[
 }
 
 // ConvertToTNPGResponses converts parsed IID results to an array of TNPGResponse matched to tokens.
-func ConvertToTNPGResponses(parsed []map[string]any, tokens []string) *pushtype.BatchResult {
-	out := &pushtype.BatchResult{}
+func ConvertToTNPGResponses(parsed []map[string]any, tokens []string) *pushtype.BatchResponse {
+	out := &pushtype.BatchResponse{}
 	out.Responses = make([]*pushtype.TNPGResponse, len(tokens))
 	for i := range tokens {
 		if i < len(parsed) {
